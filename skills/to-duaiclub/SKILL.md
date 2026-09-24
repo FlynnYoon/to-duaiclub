@@ -58,12 +58,15 @@ node "$HOME/.duaiclub/duai.mjs" doctor
 
 | 결과물 | 명령 |
 |---|---|
-| 웹앱 (로컬) | `duai capture web --dev` (package.json의 dev 스크립트 자동 사용) 또는 `--dev "명령" --port 3000` |
+| 웹앱 (로컬) | `duai capture web` (package.json의 dev 스크립트 자동 사용) 또는 `--dev "명령" --port 3000` |
+| HTML 파일 페이지 | `duai capture web --file index.html` |
 | 배포된 웹 | `duai capture web --url https://...` |
 | CLI·스크립트 | `duai capture terminal --cmd "실행 명령"` |
 | 생성한 이미지·영상 | `context.recentMedia`의 파일을 그대로 사용 |
 | 그 밖 / 캡처 실패 | `duai card --title ... --summary ... --tags ...` → 나온 `objectPath`를 `--objects`로 사용 |
 
+- **사용자가 만든 결과물 그 자체를 찍는다.** 요약 슬라이드나 소개용 HTML을 새로 만들어 찍지 않는다. `duai context`의 `captureHint`를 먼저 따른다.
+- 결과 카드는 찍을 화면이 없을 때만 쓰고, 실제 화면을 찍었으면 카드를 추가하지 않는다.
 - 이미지 1~3장 + 영상 최대 1개(15초 이하). 파일당 20MB 이하로 CLI가 자동 압축한다.
 - 캡처가 한 번 실패하면 재시도하지 말고 결과 카드로 넘어간다. 시간 예산을 넘기지 않는 것이 우선이다.
 - 캡처한 이미지는 직접 열어 보고 **비밀정보(API 키, .env, 토큰, 사내 기밀, 개인정보)가 보이면 쓰지 않는다.**

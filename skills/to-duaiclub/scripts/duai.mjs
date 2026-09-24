@@ -318,6 +318,11 @@ async function cmdContext() {
   };
   walkMedia(root, 0);
   ctx.recentMedia = media.slice(0, 20);
+  const html = findRecentHtml(root);
+  if (ctx.project.type === "web" && ctx.project.devCommand) ctx.captureHint = "duai capture web";
+  else if (html) ctx.captureHint = `duai capture web --file "${path.relative(cwd, html)}"`;
+  else if (ctx.recentMedia.length) ctx.captureHint = "recentMedia 파일을 --media로 올리기";
+  else ctx.captureHint = "duai capture terminal --cmd \"실행 명령\" (실행 결과가 텍스트일 때) 또는 duai card";
   print(ctx);
 }
 
@@ -360,6 +365,25 @@ async function startDevServer(command, port) {
   return { child, url: found };
 }
 
+function findRecentHtml(root) {
+  const SKIP = new Set(["node_modules", "dist", "build", "out", "coverage", ".git"]);
+  const found = [];
+  const walk = (dir, depth) => {
+    if (depth > 2) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.name.startsWith(".") || SKIP.has(e.name)) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p, depth + 1);
+      else if (/\.html?$/i.test(e.name)) found.push({ p, mtime: fs.statSync(p).mtimeMs });
+    }
+  };
+  walk(root, 0);
+  found.sort((a, b) => b.mtime - a.mtime);
+  return found[0]?.p ?? null;
+}
+
 async function smoothScroll(page, ms) {
   const steps = Math.max(1, Math.floor(ms / 100));
   const height = await page.evaluate(() => Math.max(0, document.documentElement.scrollHeight - window.innerHeight));
@@ -388,13 +412,24 @@ async function cmdCaptureWeb(args) {
   const dir = outDir(args);
   let server = null;
   let base = args.url;
-  if (!base) {
-    const cmd = args.dev === true ? detectProject(process.cwd()).devCommand : args.dev;
-    if (!cmd) die("--url 또는 --dev \"npm run dev\" 가 필요합니다");
-    server = await startDevServer(cmd, args.port);
-    base = server.url;
+  let htmlFile = args.file ? path.resolve(String(args.file)) : null;
+  if (!base && !htmlFile) {
+    const project = detectProject(process.cwd());
+    const devCommand = typeof args.dev === "string" ? args.dev
+      : args.dev === true || project.type === "web" ? project.devCommand : null;
+    if (devCommand) {
+      server = await startDevServer(devCommand, args.port);
+      base = server.url;
+    } else {
+      htmlFile = findRecentHtml(process.cwd());
+      if (!htmlFile) die("찍을 화면을 찾지 못했습니다. --url, --dev \"명령\", --file 페이지.html 중 하나를 지정하세요");
+    }
   }
-  const paths = list(args.paths || "/");
+  if (htmlFile) {
+    if (!fs.existsSync(htmlFile)) die(`파일이 없습니다: ${htmlFile}`);
+    base = pathToFileURL(htmlFile).href;
+  }
+  const paths = htmlFile ? [""] : list(args.paths || "/");
   const videoSeconds = Math.min(15, Number(args["video-seconds"] || 12));
   const files = [];
   const failed = [];
@@ -422,7 +457,7 @@ async function cmdCaptureWeb(args) {
       await page.waitForTimeout(800);
       const file = path.join(dir, `shot-${i + 1}.jpg`);
       await page.screenshot({ path: file, type: "jpeg", quality: 80 });
-      files.push({ path: file, kind: "image", caption: p === "/" ? "메인 화면" : `${p} 화면` });
+      files.push({ path: file, kind: "image", caption: p === "/" || p === "" ? "메인 화면" : `${p} 화면` });
     }
     await shotCtx.close();
 
@@ -553,7 +588,8 @@ const HELP = `DUAI Club /to-duaiclub CLI
   duai doctor                          설치 상태 점검
   duai context                         현재 작업(git, 프로젝트 종류, 최근 미디어) 요약
   duai event                           오늘 올라갈 모임 일정
-  duai capture web --url URL | --dev ["npm run dev"] [--port N] [--paths /,/about] [--video-seconds 12] [--no-video]
+  duai capture web [--url URL | --dev ["npm run dev"] | --file page.html] [--port N] [--paths /,/about] [--video-seconds 12] [--no-video]
+                                       옵션이 없으면 웹 프로젝트는 dev 서버, 아니면 가장 최근 HTML 파일을 찍음
   duai capture terminal --cmd "명령" | --file 로그 [--title 제목]
   duai card --title 제목 --summary 요약 [--tags a,b]     서버에서 결과 카드 생성 (objectPath 출력)
   duai post --title 제목 --summary 요약 [--media a.jpg,b.mp4] [--captions "a|b"] [--objects /objects/..]

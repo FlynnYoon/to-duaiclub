@@ -1,6 +1,8 @@
 # 결과물 유형별 캡처 전략
 
-목표: **2분 안에** 이미지 1~3장과 15초 이하 영상 1개. 막히면 즉시 결과 카드로 대체한다.
+목표: **2분 안에** 실제 결과물의 이미지 1~3장과 15초 이하 영상 1개.
+올리는 이미지는 **사용자가 오늘 만든 결과물 그 자체의 화면**이어야 한다. 요약용 슬라이드·소개 페이지·HTML을 새로 만들어 찍지 않는다.
+결과 카드(`duai card`)는 찍을 화면이 전혀 없을 때만 쓴다. `duai context`의 `captureHint`가 추천 명령이다.
 공통 크기 기준: 스크린샷은 1280x800 JPEG(품질 80, 장당 1MB 안팎), 영상은 720p 이하·15초 이하·무음. ffmpeg가 있으면 H.264(CRF 28)로 변환해 보통 2~5MB이며, 20MB를 넘으면 960px·CRF 32로 한 번 더 줄이고 그래도 크면 영상을 뺀다.
 
 ## 1. 로컬 웹앱 (React, Vite, Next.js, Express 페이지, Streamlit 등)
@@ -14,6 +16,14 @@ duai capture web --dev "streamlit run app.py --server.headless true" --port 8501
 - 이미 개발 서버가 떠 있으면 `--url http://localhost:5173` 를 쓴다(서버를 새로 띄우지 않는다).
 - `--paths`에는 이번에 만든 화면을 최대 3개 넣는다. 로그인이 필요한 화면은 캡처하지 말고 공개 화면만 쓴다.
 - 영상은 각 페이지를 부드럽게 스크롤하며 녹화한다. 인터랙션이 핵심이면 `--video-seconds 15`.
+
+## 1-1. HTML 파일 하나로 된 페이지 (서버 없음)
+
+```bash
+duai capture web --file index.html          # 옵션 없이 duai capture web 만 해도 가장 최근 HTML을 찾는다
+```
+
+애니메이션이 있으면 영상에 그대로 담긴다.
 
 ## 2. 배포된 웹 (Replit, Vercel, GitHub Pages 등)
 
@@ -42,7 +52,7 @@ duai capture terminal --file run.log --lines 30
 ffmpeg -y -i in.mov -t 15 -vf "scale='min(1280,iw)':-2" -c:v libx264 -crf 28 -preset veryfast -pix_fmt yuv420p -an -movflags +faststart out.mp4
 ```
 
-## 5. 문서 · 프롬프트 · 학습 정리 · 캡처 실패
+## 5. 찍을 화면이 없을 때만: 문서 · 프롬프트 · 학습 정리 · 캡처 실패
 
 ```bash
 duai card --title "프롬프트 엔지니어링 스터디" --summary "..." --tags "Claude,프롬프트"
@@ -52,7 +62,7 @@ duai card --title "프롬프트 엔지니어링 스터디" --summary "..." --tag
 
 ## 판단 순서
 
-1. 대화에서 만든 것이 화면이 있는 앱인가? → 1 또는 2
+1. 대화에서 만든 것이 화면이 있는 앱·웹페이지인가? → 1, 1-1 또는 2
 2. 실행 결과가 텍스트인가? → 3
 3. 결과물 자체가 이미지·영상인가? → 4
-4. 그 밖 또는 위 단계가 한 번 실패 → 5
+4. 그 밖이거나, 위 방법이 한 번 실패 → 5 (실제 화면을 찍었다면 카드는 추가하지 않는다)
