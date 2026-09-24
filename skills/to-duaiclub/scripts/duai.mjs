@@ -185,7 +185,7 @@ async function cmdContext() {
     ctx.branch = sh("git branch --show-current", { cwd }).out.trim();
     ctx.remote = sh("git remote get-url origin", { cwd }).out.trim().replace(/\/\/[^@/]+@/, "//") || null;
     ctx.status = sh("git status --short", { cwd }).out.split("\n").filter(Boolean).slice(0, 40);
-    ctx.diffStat = sh("git diff --stat HEAD", { cwd }).out.trim().split("\n").slice(-15);
+    ctx.diffStat = sh("git diff --stat HEAD", { cwd }).out.trim().split("\n").filter(Boolean).slice(-15);
     ctx.todayCommits = sh('git log --since=midnight --pretty=format:"%h %s"', { cwd }).out.split("\n").filter(Boolean).slice(0, 20);
   } else {
     const since = Date.now() - 3 * 60 * 60 * 1000;
@@ -203,15 +203,18 @@ async function cmdContext() {
     ctx.recentFiles = recent;
   }
   const media = [];
+  const SKIP_DIRS = new Set(["node_modules", "dist", "build", "out", "coverage", "public", "static", "assets", "__pycache__", "venv"]);
   const walkMedia = (dir, depth) => {
     if (depth > 2) return;
     let entries = [];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
-      if (e.name.startsWith(".") || e.name === "node_modules") continue;
+      if (e.name.startsWith(".") || SKIP_DIRS.has(e.name)) continue;
       const p = path.join(dir, e.name);
-      if (e.isDirectory()) walkMedia(p, depth + 1);
-      else if (CONTENT_TYPES[path.extname(e.name).toLowerCase()] && fs.statSync(p).mtimeMs > Date.now() - 6 * 60 * 60 * 1000) media.push(path.relative(root, p));
+      if (e.isDirectory()) { walkMedia(p, depth + 1); continue; }
+      if (!CONTENT_TYPES[path.extname(e.name).toLowerCase()] || /^(favicon|logo|icon)/i.test(e.name)) continue;
+      const st = fs.statSync(p);
+      if (st.mtimeMs > Date.now() - 6 * 60 * 60 * 1000 && st.size > 10 * 1024) media.push(path.relative(root, p));
     }
   };
   walkMedia(root, 0);
@@ -240,7 +243,9 @@ async function waitForUrl(url, timeoutMs) {
 }
 
 async function startDevServer(command, port) {
-  const child = spawn(command, { shell: true, cwd: process.cwd(), detached: process.platform !== "win32", env: { ...process.env, BROWSER: "none", PORT: port ? String(port) : process.env.PORT } });
+  const env = { ...process.env, BROWSER: "none" };
+  if (port) env.PORT = String(port);
+  const child = spawn(command, { shell: true, cwd: process.cwd(), detached: process.platform !== "win32", env });
   let found = port ? `http://localhost:${port}` : null;
   const onData = (buf) => {
     if (found) return;
@@ -293,33 +298,51 @@ async function cmdCaptureWeb(args) {
   const paths = list(args.paths || "/");
   const videoSeconds = Math.min(15, Number(args["video-seconds"] || 12));
   const files = [];
+  const failed = [];
+  const okPaths = [];
   const browser = await pw.chromium.launch();
   try {
     const shotCtx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, locale: "ko-KR" });
     const page = await shotCtx.newPage();
     for (const [i, p] of paths.slice(0, 3).entries()) {
       const url = new URL(p, base).toString();
-      await page.goto(url, { waitUntil: "networkidle", timeout: 30000 }).catch(() => page.waitForTimeout(3000));
+      let res = null;
+      try {
+        res = await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+      } catch (e) {
+        if (!/Timeout/i.test(e.message)) {
+          failed.push({ path: p, error: e.message.split("\n")[0] });
+          continue;
+        }
+      }
+      if (res && res.status() >= 400) {
+        failed.push({ path: p, error: `HTTP ${res.status()}` });
+        continue;
+      }
+      okPaths.push(p);
       await page.waitForTimeout(800);
       const file = path.join(dir, `shot-${i + 1}.jpg`);
       await page.screenshot({ path: file, type: "jpeg", quality: 80 });
-      files.push({ path: file, kind: "image", caption: p === "/" ? "메인 화면" : p });
+      files.push({ path: file, kind: "image", caption: p === "/" ? "메인 화면" : `${p} 화면` });
     }
     await shotCtx.close();
 
-    if (args["no-video"] !== true && videoSeconds > 0) {
+    if (args["no-video"] !== true && videoSeconds > 0 && okPaths.length > 0) {
       const vidCtx = await browser.newContext({ viewport: { width: 1280, height: 720 }, recordVideo: { dir, size: { width: 1280, height: 720 } }, locale: "ko-KR" });
       const vp = await vidCtx.newPage();
-      const per = (videoSeconds * 1000) / Math.min(paths.length, 3);
-      for (const p of paths.slice(0, 3)) {
+      const per = (videoSeconds * 1000) / okPaths.length;
+      for (const p of okPaths) {
         await vp.goto(new URL(p, base).toString(), { waitUntil: "networkidle", timeout: 30000 }).catch(() => {});
         await vp.waitForTimeout(600);
         await smoothScroll(vp, Math.max(1000, per - 600));
       }
       const video = vp.video();
       await vidCtx.close();
-      const raw = video ? await video.path() : null;
+      let raw = video ? await video.path() : null;
       if (raw && fs.existsSync(raw)) {
+        const named = path.join(dir, "demo.webm");
+        fs.renameSync(raw, named);
+        raw = named;
         const finalPath = encodeVideo(raw, dir);
         if (fs.statSync(finalPath).size <= TARGET_FILE_BYTES) files.push({ path: finalPath, kind: "video", caption: "데모 영상" });
       }
@@ -328,7 +351,8 @@ async function cmdCaptureWeb(args) {
     await browser.close();
     if (server) killTree(server.child);
   }
-  print({ ok: true, base, dir, files: files.map((f) => ({ ...f, size: mb(fs.statSync(f.path).size) })) });
+  if (files.length === 0) die(`${base} 에 접속하지 못했습니다. 주소와 서버 실행 여부를 확인하거나 capture terminal / card 를 쓰세요`, { failed });
+  print({ ok: true, base, dir, files: files.map((f) => ({ ...f, size: mb(fs.statSync(f.path).size) })), ...(failed.length ? { failed } : {}) });
 }
 
 const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
@@ -338,11 +362,13 @@ async function cmdCaptureTerminal(args) {
   const pw = await loadPlaywright();
   if (!pw) die("Playwright가 없어 터미널 이미지를 만들 수 없습니다. `duai card`로 결과 카드를 대신 쓰세요", { needsPlaywright: true });
   let output = "";
+  let exitCode = 0;
   let title = args.title || "";
   if (args.file) output = fs.readFileSync(args.file, "utf8");
   else if (args.cmd) {
     const r = sh(args.cmd, { timeout: Number(args.timeout || 60000), stderr: true });
     output = r.out;
+    exitCode = r.code ?? 1;
     title = title || `$ ${args.cmd}`;
   } else die("--cmd \"명령\" 또는 --file 로그파일 이 필요합니다");
   const lines = output.replace(ansi, "").replace(/\r/g, "").split("\n");
@@ -361,7 +387,12 @@ async function cmdCaptureTerminal(args) {
   } finally {
     await browser.close();
   }
-  print({ ok: true, files: [{ path: file, kind: "image", caption: "실행 결과", size: mb(fs.statSync(file).size) }] });
+  print({
+    ok: true,
+    exitCode,
+    ...(exitCode !== 0 ? { warning: "명령이 실패했습니다. 이미지를 열어 보고 오류 화면이면 올리지 말고 명령을 고치거나 결과 카드를 쓰세요" } : {}),
+    files: [{ path: file, kind: "image", caption: "실행 결과", size: mb(fs.statSync(file).size) }],
+  });
 }
 
 async function cmdCard(args) {
