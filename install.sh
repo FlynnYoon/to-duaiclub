@@ -38,7 +38,7 @@ done
 mkdir -p "$DUAI_HOME" "$HOME/.codex/prompts"
 cp "$SRC/scripts/duai.mjs" "$DUAI_HOME/duai.mjs"
 cat > "$HOME/.codex/prompts/to-duaiclub.md" <<'EOF'
-to-duaiclub 스킬을 사용해 오늘 작업 결과물을 www.duaiclub.com 오늘 모임 일정에 올려줘. $ARGUMENTS
+to-duaiclub 스킬을 사용해 오늘 작업 결과물을 www.duaiclub.com '활동 공유' 게시판에 올려줘. $ARGUMENTS
 EOF
 say "CLI: node \"\$HOME/.duaiclub/duai.mjs\""
 
