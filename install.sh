@@ -28,18 +28,17 @@ else
 fi
 [ -f "$SRC/SKILL.md" ] || { say "스킬 파일을 찾지 못했습니다"; exit 1; }
 
-for dest in "$HOME/.claude/skills/to-duaiclub" "$HOME/.codex/skills/to-duaiclub"; do
+for dest in "$HOME/.claude/skills/to-duaiclub" "$HOME/.agents/skills/to-duaiclub"; do
   rm -rf "$dest"
   mkdir -p "$dest"
   cp -R "$SRC/." "$dest/"
   say "설치: $dest"
 done
+# Codex가 같은 스킬을 두 번 보여주지 않도록 예전 위치를 정리한다.
+rm -rf "$HOME/.codex/skills/to-duaiclub" "$HOME/.codex/prompts/to-duaiclub.md"
 
-mkdir -p "$DUAI_HOME" "$HOME/.codex/prompts"
+mkdir -p "$DUAI_HOME"
 cp "$SRC/scripts/duai.mjs" "$DUAI_HOME/duai.mjs"
-cat > "$HOME/.codex/prompts/to-duaiclub.md" <<'EOF'
-to-duaiclub 스킬을 사용해 오늘 작업 결과물을 www.duaiclub.com 활동 공유 게시판에 올려줘. $ARGUMENTS
-EOF
 say "CLI: node \"\$HOME/.duaiclub/duai.mjs\""
 
 say "스크린샷 도구 설치 중"
@@ -51,4 +50,4 @@ if [ ! -f "$DUAI_HOME/config.json" ]; then
   node "$DUAI_HOME/duai.mjs" login >/dev/null || true
 fi
 
-say "완료! Claude Code에서 작업을 마친 뒤 /to-duaiclub 이라고 입력하세요. (Codex: /prompts:to-duaiclub)"
+say "완료! Claude Code에서 작업을 마친 뒤 /to-duaiclub 이라고 입력하세요. (Codex: 새 세션에서 \$to-duaiclub)"

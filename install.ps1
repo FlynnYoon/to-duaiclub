@@ -31,16 +31,19 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "skills/to-duaiclub/S
 }
 if (-not $src -or -not (Test-Path (Join-Path $src "SKILL.md"))) { Say "스킬 파일을 찾지 못했습니다"; return }
 
-foreach ($dest in @((Join-Path $HOME ".claude/skills/to-duaiclub"), (Join-Path $HOME ".codex/skills/to-duaiclub"))) {
+foreach ($dest in @((Join-Path $HOME ".claude/skills/to-duaiclub"), (Join-Path $HOME ".agents/skills/to-duaiclub"))) {
   if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
   New-Item -ItemType Directory -Force $dest | Out-Null
   Copy-Item (Join-Path $src "*") $dest -Recurse -Force
   Say "설치: $dest"
 }
+# Codex가 같은 스킬을 두 번 보여주지 않도록 예전 위치를 정리한다.
+foreach ($old in @((Join-Path $HOME ".codex/skills/to-duaiclub"), (Join-Path $HOME ".codex/prompts/to-duaiclub.md"))) {
+  if (Test-Path $old) { Remove-Item $old -Recurse -Force }
+}
 
-New-Item -ItemType Directory -Force $DuaiHome, (Join-Path $HOME ".codex/prompts") | Out-Null
+New-Item -ItemType Directory -Force $DuaiHome | Out-Null
 Copy-Item (Join-Path $src "scripts/duai.mjs") (Join-Path $DuaiHome "duai.mjs") -Force
-Set-Content -Encoding utf8 (Join-Path $HOME ".codex/prompts/to-duaiclub.md") 'to-duaiclub 스킬을 사용해 오늘 작업 결과물을 www.duaiclub.com 활동 공유 게시판에 올려줘. $ARGUMENTS'
 Say 'CLI: node "$HOME/.duaiclub/duai.mjs"'
 
 Say "스크린샷 도구 설치 중"
@@ -53,4 +56,4 @@ if (-not (Test-Path $cfg)) {
   node (Join-Path $DuaiHome "duai.mjs") login | Out-Null
 }
 
-Say '완료! Claude Code에서 작업을 마친 뒤 /to-duaiclub 이라고 입력하세요. (Codex: /prompts:to-duaiclub)'
+Say '완료! Claude Code에서 작업을 마친 뒤 /to-duaiclub 이라고 입력하세요. (Codex: 새 세션에서 $to-duaiclub)'

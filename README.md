@@ -18,9 +18,9 @@ DUAI 점심 모임에서 작업을 마친 뒤 `/to-duaiclub` 한 번이면, AI�
 그다음부터는 작업을 마치고 입력만 하면 됩니다. 요약·스크린샷·영상·업로드를 AI가 알아서 하고 링크를 알려줍니다.
 
 - Claude Code: `/to-duaiclub`
-- Codex CLI: `/prompts:to-duaiclub` 또는 "DUAI에 올려줘"
+- Codex CLI: 새 세션에서 `$to-duaiclub` 또는 "DUAI에 올려줘" (`/skills`에서 골라도 됩니다)
 
-설치 위치: `~/.claude/skills/to-duaiclub`, `~/.codex/skills/to-duaiclub`, CLI는 `~/.duaiclub/duai.mjs`.
+설치 위치: `~/.claude/skills/to-duaiclub`, `~/.agents/skills/to-duaiclub`(Codex), CLI는 `~/.duaiclub/duai.mjs`.
 상태 점검: `node "$HOME/.duaiclub/duai.mjs" doctor`
 
 ## Claude 웹·앱
