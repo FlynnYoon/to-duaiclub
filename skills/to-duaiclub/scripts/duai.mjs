@@ -246,11 +246,6 @@ async function cmdDoctor() {
   print(result);
 }
 
-async function cmdEvent() {
-  const events = await api("GET", "/api/v1/events/active");
-  print({ ok: true, events: events.map((e) => ({ id: e.id, title: e.title, startDate: e.startDate, endDate: e.endDate, location: e.location })) });
-}
-
 function detectProject(root) {
   const info = { type: "unknown", devCommand: null, framework: null };
   const pkgPath = path.join(root, "package.json");
@@ -554,7 +549,7 @@ async function cmdPost(args) {
   const title = args.title && String(args.title);
   let summary = args.summary && String(args.summary);
   if (args["summary-file"]) summary = fs.readFileSync(args["summary-file"], "utf8");
-  if (!title || !summary) die("사용법: duai post --title \"제목\" --summary \"요약\" [--media a.jpg,b.mp4] [--captions \"설명1|설명2\"] [--objects /objects/..] [--link URL] [--event ID] [--tool \"Claude Code\"]");
+  if (!title || !summary) die("사용법: duai post --title \"제목\" --summary \"요약\" [--media a.jpg,b.mp4] [--captions \"설명1|설명2\"] [--objects /objects/..] [--link URL] [--tool \"Claude Code\"]");
   const files = list(args.media);
   const captions = args.captions ? String(args.captions).split("|").map((s) => s.trim()) : [];
   for (const f of files) if (!fs.existsSync(f)) die(`파일이 없습니다: ${f}`);
@@ -562,7 +557,7 @@ async function cmdPost(args) {
   const media = [];
   for (const obj of list(args.objects)) media.push({ objectPath: obj, kind: "image" });
   if (args["dry-run"]) {
-    print({ ok: true, dryRun: true, title, summary, files, objects: media, links: list(args.link), event: args.event || "(자동 선택)" });
+    print({ ok: true, dryRun: true, title, summary, files, objects: media, links: list(args.link) });
     return;
   }
   for (const [i, f] of files.entries()) {
@@ -571,7 +566,6 @@ async function cmdPost(args) {
     media.push({ objectPath, kind, ...(captions[i] ? { caption: captions[i] } : {}) });
   }
   const result = await api("POST", "/api/v1/showcase", {
-    ...(args.event ? { eventId: String(args.event) } : {}),
     title,
     summary,
     media,
@@ -587,13 +581,13 @@ const HELP = `DUAI Club /to-duaiclub CLI
   duai login <토큰>                    프로필에서 발급한 토큰으로 로그인
   duai doctor                          설치 상태 점검
   duai context                         현재 작업(git, 프로젝트 종류, 최근 미디어) 요약
-  duai event                           오늘 올라갈 모임 일정
   duai capture web [--url URL | --dev ["npm run dev"] | --file page.html] [--port N] [--paths /,/about] [--video-seconds 12] [--no-video]
                                        옵션이 없으면 웹 프로젝트는 dev 서버, 아니면 가장 최근 HTML 파일을 찍음
   duai capture terminal --cmd "명령" | --file 로그 [--title 제목]
   duai card --title 제목 --summary 요약 [--tags a,b]     서버에서 결과 카드 생성 (objectPath 출력)
   duai post --title 제목 --summary 요약 [--media a.jpg,b.mp4] [--captions "a|b"] [--objects /objects/..]
-            [--link URL] [--event ID] [--tool "Claude Code"] [--dry-run]
+            [--link URL] [--tool "Claude Code"] [--dry-run]
+                                       'DUAI Club 활동 공유' 게시판에 새 글로 올림
 `;
 
 async function main() {
@@ -604,7 +598,6 @@ async function main() {
     case "whoami": return cmdWhoami();
     case "doctor": return cmdDoctor();
     case "context": return cmdContext();
-    case "event": return cmdEvent();
     case "card": return cmdCard(args);
     case "post": return cmdPost(args);
     case "capture":

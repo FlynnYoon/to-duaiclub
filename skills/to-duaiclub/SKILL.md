@@ -1,19 +1,19 @@
 ---
 name: to-duaiclub
-description: DUAI 동호회 점심 모임에서 오늘 작업한 결과물(요약, 스크린샷, 데모 영상)을 www.duaiclub.com 의 오늘 모임 일정에 자동으로 올린다. 사용자가 "/to-duaiclub", "DUAI에 올려줘", "duaiclub 업로드", "오늘 작업 홈페이지에 공유" 등을 요청하거나 작업을 마치고 동호회에 공유하려 할 때 사용한다.
+description: DUAI 동호회 점심 모임에서 오늘 작업한 결과물(요약, 스크린샷, 데모 영상)을 www.duaiclub.com 의 '활동 공유' 게시판에 자동으로 올린다. 사용자가 "/to-duaiclub", "DUAI에 올려줘", "duaiclub 업로드", "오늘 작업 홈페이지에 공유" 등을 요청하거나 작업을 마치고 동호회에 공유하려 할 때 사용한다.
 allowed-tools: Bash(node:*), Read, Write
 ---
 
 # /to-duaiclub
 
-작업이 끝난 뒤 이 스킬 하나로 **5분 안에** 결과물을 DUAI Club 홈페이지 오늘 모임 일정에 올린다.
+작업이 끝난 뒤 이 스킬 하나로 **5분 안에** 결과물을 DUAI Club 홈페이지 '활동 공유' 게시판에 새 글로 올린다.
 사용자는 개발자가 아닐 수 있다. **중간에 아무것도 묻지 않고** 요약·캡처·업로드까지 끝낸 뒤 결과 링크만 알려준다.
 사용자가 "올리기 전에 보여줘"라고 했을 때만 미리보기를 먼저 보여준다.
 
 ## 0. 실행 환경 판별
 
 - **셸을 쓸 수 있다** (Claude Code, Codex CLI 등): 아래 "CLI 흐름"을 따른다.
-- **셸은 없고 DUAI Club MCP 도구(`get_active_event`, `post_showcase` 등)가 있다** (ChatGPT, Claude 웹·앱): [references/web-and-app.md](references/web-and-app.md)를 따른다.
+- **셸은 없고 DUAI Club MCP 도구(`upload_image`, `post_showcase` 등)가 있다** (ChatGPT, Claude 웹·앱): [references/web-and-app.md](references/web-and-app.md)를 따른다.
 - **둘 다 없다**: 사용자에게 "설정 > 커넥터에 `https://www.duaiclub.com/mcp` 를 추가하고 DUAI Club 계정으로 로그인해 주세요"라고 안내하고 멈춘다.
 
 ## CLI 흐름
@@ -35,7 +35,7 @@ node "$HOME/.duaiclub/duai.mjs" doctor
 요약은 **사용자에게 쓰라고 하지 않고 직접 작성한다.** 근거는 이번 대화 내용 → 오늘 커밋 메시지(`todayCommits`) → 변경 파일(`status`, `diffStat`) 순으로 쓴다.
 
 - **제목**: 40자 이내. 무엇을 만들었는지 (예: "Claude Code로 사내 식단 추천 봇 만들기")
-- **요약**: 정확히 3~4줄, 줄마다 `- `로 시작하고 한 줄은 60자 안팎. 댓글 본문에 그대로 들어간다.
+- **요약**: 정확히 3~4줄, 줄마다 `- `로 시작하고 한 줄은 60자 안팎. 게시글 본문에 그대로 들어간다.
   1. 오늘 만든 것·공부한 것 (결과 한 문장)
   2. 어떤 AI 도구를 어떻게 썼는지
   3. 핵심 구현 내용이나 새로 알게 된 것
@@ -71,11 +71,9 @@ node "$HOME/.duaiclub/duai.mjs" doctor
 - 캡처가 한 번 실패하면 재시도하지 말고 결과 카드로 넘어간다. 시간 예산을 넘기지 않는 것이 우선이다.
 - 캡처한 이미지는 직접 열어 보고 **비밀정보(API 키, .env, 토큰, 사내 기밀, 개인정보)가 보이면 쓰지 않는다.**
 
-### 4. 올라갈 일정 확인
+### 4. 올리기
 
-`--event` 없이 올리면 서버가 알아서 고른다. 지금 진행 중인 일정 → 오늘 날짜의 일정 순이고, 오늘 일정이 하나도 없으면 서버가 "M월 D일 점심 실습" 일정을 만들어 거기에 올린다. 그러니 이 단계는 건너뛰어도 되고, 일정이 없다고 멈추지 않는다.
-
-### 5. 올리기
+제목이 게시글 제목, 요약·이미지·영상이 본문, 링크는 게시글의 링크 칸에 들어간다.
 
 ```bash
 node "$HOME/.duaiclub/duai.mjs" post --title "제목" --summary-file summary.md \
@@ -87,12 +85,12 @@ node "$HOME/.duaiclub/duai.mjs" post --title "제목" --summary-file summary.md 
 - 결과 카드는 `--objects /objects/uploads/...`로 넘긴다.
 - 성공하면 이렇게 알린다:
   ```
-  오늘 모임 '{eventTitle}'에 올렸습니다: {url}
-  [오늘의 작업] {제목}
+  활동 공유 게시판에 올렸습니다: {url}
+  {제목}
   {요약}
   첨부: 이미지 2장, 영상 1개
   ```
-  수정 요청이 오면 새로 올리지 말고, 사이트에서 댓글을 고치거나 지우는 방법을 안내한다.
+  수정 요청이 오면 새로 올리지 말고, 링크의 글에서 '수정'·'삭제'를 쓰라고 안내한다.
 
 ## 오류 대응
 
