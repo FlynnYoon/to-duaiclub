@@ -40,7 +40,7 @@ foreach ($dest in @((Join-Path $HOME ".claude/skills/to-duaiclub"), (Join-Path $
 
 New-Item -ItemType Directory -Force $DuaiHome, (Join-Path $HOME ".codex/prompts") | Out-Null
 Copy-Item (Join-Path $src "scripts/duai.mjs") (Join-Path $DuaiHome "duai.mjs") -Force
-Set-Content -Encoding utf8 (Join-Path $HOME ".codex/prompts/to-duaiclub.md") 'to-duaiclub 스킬을 사용해 오늘 작업 결과물을 www.duaiclub.com '활동 공유' 게시판에 올려줘. $ARGUMENTS'
+Set-Content -Encoding utf8 (Join-Path $HOME ".codex/prompts/to-duaiclub.md") 'to-duaiclub 스킬을 사용해 오늘 작업 결과물을 www.duaiclub.com 활동 공유 게시판에 올려줘. $ARGUMENTS'
 Say 'CLI: node "$HOME/.duaiclub/duai.mjs"'
 
 Say "스크린샷 도구 설치 중"
