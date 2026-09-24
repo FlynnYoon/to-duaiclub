@@ -8,9 +8,11 @@ REF="${DUAI_SKILL_REF:-main}"
 DUAI_HOME="$HOME/.duaiclub"
 
 say() { printf '\033[1;36m[duaiclub]\033[0m %s\n' "$*"; }
-ask() { local a=""; if [ -r /dev/tty ]; then read -r -p "$1" a </dev/tty || true; fi; printf '%s' "$a"; }
-
-command -v node >/dev/null 2>&1 || { say "Node.js 18 이상이 필요합니다: https://nodejs.org"; exit 1; }
+if ! command -v node >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
+  say "Node.js를 설치합니다 (1~2분)"
+  brew install node >/dev/null
+fi
+command -v node >/dev/null 2>&1 || { say "Node.js 18 이상이 필요합니다: https://nodejs.org 에서 설치한 뒤 다시 실행하세요"; exit 1; }
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 [ "$NODE_MAJOR" -ge 18 ] || { say "Node.js 18 이상이 필요합니다 (현재 $(node -v))"; exit 1; }
 
@@ -40,17 +42,13 @@ to-duaiclub 스킬을 사용해 오늘 작업 결과물을 www.duaiclub.com 오�
 EOF
 say "CLI: node \"\$HOME/.duaiclub/duai.mjs\""
 
-if [ "$(ask '스크린샷·영상 자동 캡처용 Playwright(Chromium, 약 150MB)를 설치할까요? [Y/n] ')" != "n" ]; then
-  npm i --silent --prefix "$DUAI_HOME" playwright >/dev/null
-  npx --prefix "$DUAI_HOME" playwright install chromium
-fi
-command -v ffmpeg >/dev/null 2>&1 || say "참고: ffmpeg가 있으면 영상을 더 작게(mp4) 올립니다 (brew install ffmpeg / apt install ffmpeg)"
+say "스크린샷 도구 설치 중"
+[ -f "$DUAI_HOME/package.json" ] || echo '{"private":true}' > "$DUAI_HOME/package.json"
+npm i --silent --no-audit --no-fund --prefix "$DUAI_HOME" playwright >/dev/null 2>&1 || true
 
-TOKEN="$(ask 'https://www.duaiclub.com/profile 에서 발급한 토큰을 붙여넣으세요 (나중에 하려면 Enter): ')"
-if [ -n "$TOKEN" ]; then
-  node "$DUAI_HOME/duai.mjs" login "$TOKEN"
-else
-  say "나중에: node \"\$HOME/.duaiclub/duai.mjs\" login <토큰>"
+if [ ! -f "$DUAI_HOME/config.json" ]; then
+  say "브라우저가 열리면 DUAI Club에 로그인하고 '허용'을 눌러주세요"
+  node "$DUAI_HOME/duai.mjs" login >/dev/null || true
 fi
 
-say "완료! Claude Code에서는 /to-duaiclub, Codex에서는 /prompts:to-duaiclub 또는 \"DUAI에 올려줘\"라고 입력하세요."
+say "완료! Claude Code에서 작업을 마친 뒤 /to-duaiclub 이라고 입력하세요. (Codex: /prompts:to-duaiclub)"

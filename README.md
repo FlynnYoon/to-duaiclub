@@ -8,15 +8,17 @@ DUAI 점심 모임에서 작업을 마친 뒤 `/to-duaiclub` 한 번이면, AI�
 | Claude 웹·앱 | 스킬 zip + MCP 커넥터 | 첨부 이미지 또는 결과 카드 |
 | ChatGPT 웹·앱 | MCP 커넥터 | 첨부 이미지 또는 결과 카드 |
 
-## Claude Code · Codex CLI (3단계)
+## Claude Code · Codex CLI
 
-1. [프로필 > AI 스킬 연결](https://www.duaiclub.com/profile)에서 **토큰 발급**
-2. 설치 (중간에 토큰을 붙여넣으면 로그인까지 끝납니다)
-   - macOS / Linux: `curl -fsSL https://raw.githubusercontent.com/FlynnYoon/to-duaiclub/main/install.sh | bash`
-   - Windows PowerShell: `irm https://raw.githubusercontent.com/FlynnYoon/to-duaiclub/main/install.ps1 | iex`
-3. 작업이 끝나면
-   - Claude Code: `/to-duaiclub`
-   - Codex CLI: `/prompts:to-duaiclub` 또는 "DUAI에 올려줘"
+**처음 한 번만** 터미널에 아래 한 줄을 붙여넣습니다. 끝나면 브라우저가 열리니 DUAI Club에 로그인하고 '허용'을 누르세요.
+
+- macOS / Linux: `curl -fsSL https://raw.githubusercontent.com/FlynnYoon/to-duaiclub/main/install.sh | bash`
+- Windows PowerShell: `irm https://raw.githubusercontent.com/FlynnYoon/to-duaiclub/main/install.ps1 | iex`
+
+그다음부터는 작업을 마치고 입력만 하면 됩니다. 요약·스크린샷·영상·업로드를 AI가 알아서 하고 링크를 알려줍니다.
+
+- Claude Code: `/to-duaiclub`
+- Codex CLI: `/prompts:to-duaiclub` 또는 "DUAI에 올려줘"
 
 설치 위치: `~/.claude/skills/to-duaiclub`, `~/.codex/skills/to-duaiclub`, CLI는 `~/.duaiclub/duai.mjs`.
 상태 점검: `node "$HOME/.duaiclub/duai.mjs" doctor`

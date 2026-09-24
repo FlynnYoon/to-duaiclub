@@ -8,7 +8,12 @@ $DuaiHome = Join-Path $HOME ".duaiclub"
 
 function Say($msg) { Write-Host "[duaiclub] $msg" -ForegroundColor Cyan }
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Say "Node.js 18 이상이 필요합니다: https://nodejs.org"; return }
+if (-not (Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+  Say "Node.js를 설치합니다 (1~2분)"
+  winget install -e --id OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements | Out-Null
+  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+}
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Say "Node.js 18 이상이 필요합니다: https://nodejs.org 에서 설치한 뒤 다시 실행하세요"; return }
 $major = [int](node -p "process.versions.node.split('.')[0]")
 if ($major -lt 18) { Say "Node.js 18 이상이 필요합니다 (현재 $(node -v))"; return }
 
@@ -38,18 +43,14 @@ Copy-Item (Join-Path $src "scripts/duai.mjs") (Join-Path $DuaiHome "duai.mjs") -
 Set-Content -Encoding utf8 (Join-Path $HOME ".codex/prompts/to-duaiclub.md") 'to-duaiclub 스킬을 사용해 오늘 작업 결과물을 www.duaiclub.com 오늘 모임 일정에 올려줘. $ARGUMENTS'
 Say 'CLI: node "$HOME/.duaiclub/duai.mjs"'
 
-$pw = Read-Host "스크린샷·영상 자동 캡처용 Playwright(Chromium, 약 150MB)를 설치할까요? [Y/n]"
-if ($pw -ne "n") {
-  npm i --silent --prefix $DuaiHome playwright | Out-Null
-  npx --prefix $DuaiHome playwright install chromium
-}
-if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { Say "참고: ffmpeg가 있으면 영상을 더 작게(mp4) 올립니다 (winget install ffmpeg)" }
+Say "스크린샷 도구 설치 중"
+if (-not (Test-Path (Join-Path $DuaiHome "package.json"))) { Set-Content -Encoding utf8 (Join-Path $DuaiHome "package.json") '{"private":true}' }
+npm i --silent --no-audit --no-fund --prefix $DuaiHome playwright 2>$null | Out-Null
 
-$token = Read-Host "https://www.duaiclub.com/profile 에서 발급한 토큰을 붙여넣으세요 (나중에 하려면 Enter)"
-if ($token) {
-  node (Join-Path $DuaiHome "duai.mjs") login $token
-} else {
-  Say '나중에: node "$HOME/.duaiclub/duai.mjs" login <토큰>'
+$cfg = Join-Path $DuaiHome "config.json"
+if (-not (Test-Path $cfg)) {
+  Say "브라우저가 열리면 DUAI Club에 로그인하고 '허용'을 눌러주세요"
+  node (Join-Path $DuaiHome "duai.mjs") login | Out-Null
 }
 
-Say '완료! Claude Code에서는 /to-duaiclub, Codex에서는 /prompts:to-duaiclub 또는 "DUAI에 올려줘"라고 입력하세요.'
+Say '완료! Claude Code에서 작업을 마친 뒤 /to-duaiclub 이라고 입력하세요. (Codex: /prompts:to-duaiclub)'

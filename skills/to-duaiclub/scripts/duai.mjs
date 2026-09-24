@@ -55,8 +55,75 @@ function saveConfig(cfg) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), { mode: 0o600 });
 }
 
-async function api(method, pathname, body, cfg = loadConfig()) {
-  if (!cfg.token) die("토큰이 없습니다. https://www.duaiclub.com/profile 에서 토큰을 발급한 뒤 `duai login <토큰>`을 실행하세요", { needsLogin: true });
+const note = (msg) => console.error(`[duaiclub] ${msg}`);
+
+function openBrowser(url) {
+  if (process.env.DUAI_NO_BROWSER) return;
+  const [cmd, argv] = process.platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
+    : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  try { spawn(cmd, argv, { stdio: "ignore", detached: true }).unref(); } catch {}
+}
+
+const b64url = (buf) => buf.toString("base64url");
+
+// 브라우저로 DUAI Club에 로그인해 토큰을 받아 저장한다 (OAuth + PKCE, 127.0.0.1 콜백).
+async function browserLogin(baseUrl) {
+  const { createServer } = await import("node:http");
+  const crypto = await import("node:crypto");
+  const verifier = b64url(crypto.randomBytes(32));
+  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
+  const state = b64url(crypto.randomBytes(16));
+
+  let finish;
+  const done = new Promise((resolve) => { finish = resolve; });
+  const server = createServer((req, res) => {
+    const u = new URL(req.url, "http://127.0.0.1");
+    if (u.pathname !== "/callback") { res.writeHead(404).end(); return; }
+    const ok = u.searchParams.get("state") === state && u.searchParams.get("code");
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", Connection: "close" });
+    res.end(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;text-align:center;padding:60px">
+<h2>${ok ? "DUAI Club 연결 완료" : "연결하지 못했습니다"}</h2><p>${ok ? "이 창을 닫고 터미널로 돌아가세요." : "터미널에서 다시 시도해 주세요."}</p></body>`);
+    finish(ok ? { code: u.searchParams.get("code") } : { error: u.searchParams.get("error") || "state 불일치" });
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const redirectUri = `http://127.0.0.1:${server.address().port}/callback`;
+  try {
+    const reg = await fetch(`${baseUrl}/oauth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_name: `DUAI 스킬 (${os.hostname()})`, redirect_uris: [redirectUri], token_endpoint_auth_method: "none" }),
+    });
+    if (!reg.ok) die(`로그인 준비 실패 (${reg.status})`, { needsLogin: true });
+    const { client_id } = await reg.json();
+    const authUrl = `${baseUrl}/oauth/authorize?` + new URLSearchParams({
+      response_type: "code", client_id, redirect_uri: redirectUri, code_challenge: challenge, code_challenge_method: "S256", state,
+    });
+    note("브라우저에서 DUAI Club에 로그인하고 '허용'을 눌러주세요 (처음 한 번만).");
+    note(`브라우저가 안 열리면 이 주소를 여세요: ${authUrl}`);
+    openBrowser(authUrl);
+    let timeoutId;
+    const timer = new Promise((r) => { timeoutId = setTimeout(() => r({ error: "5분 안에 로그인하지 않았습니다" }), 5 * 60 * 1000); });
+    const result = await Promise.race([done, timer]);
+    clearTimeout(timeoutId);
+    if (result.error) die(`로그인하지 못했습니다: ${result.error}`, { needsLogin: true });
+    const tok = await fetch(`${baseUrl}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code: result.code, code_verifier: verifier, client_id, redirect_uri: redirectUri }),
+    });
+    const data = await tok.json().catch(() => ({}));
+    if (!tok.ok || !data.access_token) die(`로그인하지 못했습니다: ${data.error_description || tok.status}`, { needsLogin: true });
+    saveConfig({ baseUrl, token: data.access_token });
+    note("로그인 완료.");
+    return { baseUrl, token: data.access_token };
+  } finally {
+    server.close();
+    server.closeAllConnections?.();
+  }
+}
+
+async function api(method, pathname, body, cfg = loadConfig(), retried = false) {
+  if (!cfg.token) cfg = await browserLogin(cfg.baseUrl);
   const res = await fetch(cfg.baseUrl + pathname, {
     method,
     headers: { Authorization: `Bearer ${cfg.token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
@@ -65,7 +132,11 @@ async function api(method, pathname, body, cfg = loadConfig()) {
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 300) }; }
-  if (res.status === 401) die("토큰이 유효하지 않습니다. 프로필에서 새 토큰을 발급해 `duai login`을 다시 실행하세요", { needsLogin: true });
+  if (res.status === 401) {
+    if (retried || process.env.DUAI_TOKEN) die("로그인이 만료되었습니다. `duai login`을 다시 실행하세요", { needsLogin: true });
+    note("로그인이 만료되어 다시 로그인합니다.");
+    return api(method, pathname, body, await browserLogin(cfg.baseUrl), true);
+  }
   if (!res.ok) die(data.error || `요청 실패 (${res.status})`, { status: res.status });
   return data;
 }
@@ -80,16 +151,43 @@ function sh(cmd, opts = {}) {
   return { code: r.status, out: (r.stdout || "") + (opts.stderr ? r.stderr || "" : ""), err: r.stderr || "" };
 }
 
+let playwrightDir = null;
+
 async function loadPlaywright() {
   const bases = [path.join(process.cwd(), "noop.js"), path.join(HOME_DIR, "noop.js")];
   for (const base of bases) {
     try {
       const resolved = createRequire(base).resolve("playwright");
       const mod = await import(pathToFileURL(resolved).href);
+      playwrightDir = path.dirname(resolved);
       return mod.chromium ? mod : mod.default;
     } catch {}
   }
   return null;
+}
+
+async function ensurePlaywright() {
+  const pw = await loadPlaywright();
+  if (pw || !has("npm")) return pw;
+  note("스크린샷 도구를 처음 한 번 설치합니다 (1분 정도)...");
+  fs.mkdirSync(HOME_DIR, { recursive: true });
+  const pkg = path.join(HOME_DIR, "package.json");
+  if (!fs.existsSync(pkg)) fs.writeFileSync(pkg, JSON.stringify({ private: true }));
+  sh(`npm i --silent --no-audit --no-fund --prefix "${HOME_DIR}" playwright`, { timeout: 240000 });
+  return loadPlaywright();
+}
+
+async function launchBrowser(pw) {
+  for (const opts of [{}, { channel: "chrome" }, { channel: "msedge" }]) {
+    try { return await pw.chromium.launch(opts); } catch {}
+  }
+  const cli = playwrightDir && path.join(playwrightDir, "cli.js");
+  if (cli && fs.existsSync(cli)) {
+    note("브라우저 엔진을 처음 한 번 내려받습니다 (1~2분)...");
+    sh(`"${process.execPath}" "${cli}" install chromium`, { timeout: 300000 });
+    try { return await pw.chromium.launch(); } catch {}
+  }
+  die("캡처용 브라우저를 실행하지 못했습니다. `duai card`로 결과 카드를 대신 쓰세요", { needsPlaywright: true });
 }
 
 function outDir(args) {
@@ -102,9 +200,10 @@ function outDir(args) {
 
 async function cmdLogin(args) {
   const token = args._[1] || args.token;
-  if (!token || !String(token).startsWith("duai_")) die("사용법: duai login duai_xxx  (토큰은 https://www.duaiclub.com/profile 에서 발급)");
-  const cfg = { baseUrl: (args.base || loadConfig().baseUrl).replace(/\/+$/, ""), token };
-  const me = await api("GET", "/api/v1/me", null, cfg);
+  const baseUrl = (args.base || loadConfig().baseUrl).replace(/\/+$/, "");
+  if (token && !String(token).startsWith("duai_")) die("토큰은 duai_ 로 시작해야 합니다. 토큰 없이 `duai login`만 실행하면 브라우저로 로그인합니다");
+  const cfg = token ? { baseUrl, token } : await browserLogin(baseUrl);
+  const me = await api("GET", "/api/v1/me", null, cfg, true);
   saveConfig(cfg);
   print({ ok: true, user: { name: me.name, email: me.email }, config: CONFIG_PATH });
 }
@@ -141,8 +240,8 @@ async function cmdDoctor() {
     }
   }
   result.hints = [];
-  if (!result.hasToken || result.tokenValid === false) result.hints.push("https://www.duaiclub.com/profile 에서 토큰 발급 후: node \"$HOME/.duaiclub/duai.mjs\" login <토큰>");
-  if (!result.playwright || !result.chromium) result.hints.push("스크린샷/영상 캡처용: npm i --prefix \"$HOME/.duaiclub\" playwright && npx --prefix \"$HOME/.duaiclub\" playwright install chromium");
+  if (!result.hasToken || result.tokenValid === false) result.hints.push("로그인 전입니다. 처음 올릴 때 브라우저가 열리면 DUAI Club에 로그인하고 '허용'을 누르면 됩니다");
+  if (!result.playwright) result.hints.push("스크린샷 도구는 처음 캡처할 때 자동으로 설치됩니다 (npm 필요)");
   if (!result.ffmpeg) result.hints.push("ffmpeg가 없으면 영상은 webm 그대로 올립니다 (선택 설치)");
   print(result);
 }
@@ -284,8 +383,8 @@ function encodeVideo(input, dir) {
 }
 
 async function cmdCaptureWeb(args) {
-  const pw = await loadPlaywright();
-  if (!pw) die("Playwright가 없습니다. 먼저 설치하세요: npm i --prefix \"$HOME/.duaiclub\" playwright && npx --prefix \"$HOME/.duaiclub\" playwright install chromium", { needsPlaywright: true });
+  const pw = await ensurePlaywright();
+  if (!pw) die("스크린샷 도구를 설치하지 못했습니다. `duai card`로 결과 카드를 대신 쓰세요", { needsPlaywright: true });
   const dir = outDir(args);
   let server = null;
   let base = args.url;
@@ -300,7 +399,7 @@ async function cmdCaptureWeb(args) {
   const files = [];
   const failed = [];
   const okPaths = [];
-  const browser = await pw.chromium.launch();
+  const browser = await launchBrowser(pw);
   try {
     const shotCtx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, locale: "ko-KR" });
     const page = await shotCtx.newPage();
@@ -359,8 +458,8 @@ const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 
 async function cmdCaptureTerminal(args) {
-  const pw = await loadPlaywright();
-  if (!pw) die("Playwright가 없어 터미널 이미지를 만들 수 없습니다. `duai card`로 결과 카드를 대신 쓰세요", { needsPlaywright: true });
+  const pw = await ensurePlaywright();
+  if (!pw) die("스크린샷 도구를 설치하지 못했습니다. `duai card`로 결과 카드를 대신 쓰세요", { needsPlaywright: true });
   let output = "";
   let exitCode = 0;
   let title = args.title || "";
@@ -379,7 +478,7 @@ async function cmdCaptureTerminal(args) {
 <pre style="margin:0;padding:18px;background:#111827;color:#e5e7eb;font-size:15px;line-height:1.5;white-space:pre-wrap;word-break:break-all">${esc(shown)}</pre></div></body>`;
   const dir = outDir(args);
   const file = path.join(dir, "terminal.png");
-  const browser = await pw.chromium.launch();
+  const browser = await launchBrowser(pw);
   try {
     const page = await browser.newPage({ viewport: { width: 1148, height: 800 } });
     await page.setContent(html);
@@ -449,7 +548,8 @@ async function cmdPost(args) {
 
 const HELP = `DUAI Club /to-duaiclub CLI
 
-  duai login <토큰>                    토큰 저장 (https://www.duaiclub.com/profile 에서 발급)
+  duai login                           브라우저로 DUAI Club 로그인 (다른 명령도 필요하면 자동으로 실행)
+  duai login <토큰>                    프로필에서 발급한 토큰으로 로그인
   duai doctor                          설치 상태 점검
   duai context                         현재 작업(git, 프로젝트 종류, 최근 미디어) 요약
   duai event                           오늘 올라갈 모임 일정

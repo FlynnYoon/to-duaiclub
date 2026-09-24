@@ -20,10 +20,9 @@
    - 사용자가 대화에 스크린샷을 첨부했거나 코드 실행(Python 등)으로 차트·이미지를 만들었다면 그 이미지를 base64로 `upload_image`에 넘긴다.
    - 코드 실행으로 파일을 만들었지만 base64를 도구에 넘길 수 없는 환경이면 `make_card`를 쓴다.
    - 이미지가 없으면 `make_card`로 결과 카드를 만든다.
-   - 화면 캡처가 필요한 작업이면 사용자에게 "스크린샷을 대화에 붙여 주시면 함께 올릴게요"라고 한 번 제안하되, 기다리지 않고 카드로 진행해도 된다.
-4. **확인**: 미리보기(제목, 요약, 첨부, 일정 이름)를 보여주고 한 번만 확인받는다.
-5. **올리기**: `post_showcase`에 `title`, `summary`, `media`(`[{objectPath, kind:"image", caption}]`), `links`, `tool`("ChatGPT" 또는 "Claude")을 넘긴다.
-6. 결과의 `eventTitle`과 `url`을 알려준다.
+   - 기다리거나 스크린샷을 요청하지 않는다.
+4. **올리기**: 묻지 않고 바로 `post_showcase`에 `title`, `summary`, `media`(`[{objectPath, kind:"image", caption}]`), `links`, `tool`("ChatGPT" 또는 "Claude")을 넘긴다. 사용자가 "올리기 전에 보여줘"라고 했을 때만 미리보기를 먼저 보여준다.
+5. 결과의 `eventTitle`과 `url`, 올린 제목·요약을 알려준다.
 
 ## 주의
 
